@@ -39,6 +39,11 @@ python predict.py --test data/test.csv --sample data/sample_submission.csv
 This writes `outputs/baseline/submission.csv` with AI probabilities in sample order.
 The file must be uploaded to Kaggle separately.
 
+## Baseline result
+
+My November 3 run (`9a0e160`, seed 42, settings in `train.py`) scored **0.983512 training AUROC** and **0.916527 validation AUROC**; fitting took 1.018s on this laptop.
+The saved model reproduced the validation predictions, and the 3,000-row submission passed checks. No Kaggle upload yet; this is one local holdout result.
+
 ## Work split
 
 I set up the data checks and baseline; Bowei handles model experiments, and Zalan handles unlabeled data and error analysis.
