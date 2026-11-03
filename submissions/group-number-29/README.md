@@ -48,6 +48,10 @@ The saved model reproduced the validation predictions, and the 3,000-row submiss
 
 I set up the data checks and baseline; Bowei handles model experiments, and Zalan handles unlabeled data and error analysis.
 
+## Q1/Q2 experiments
+
+Bowei's model comparison and baseline learning curve are recorded in [q1_q2_results.md](q1_q2_results.md). Reproduce them with `python experiments.py --train data/train.csv`.
+
 ## AI assistance
 
 AI assists me with implementation. I review and check all AI-generated output before submitting.

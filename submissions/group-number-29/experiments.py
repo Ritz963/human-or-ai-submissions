@@ -297,7 +297,7 @@ From this directory, activate the Python 3.11 environment and run:
 .venv/bin/python experiments.py --train /path/to/train.csv
 ```
 
-Candidate results: `outputs/q1_q2/model_comparison.csv`; learning-curve values: `outputs/q1_q2/learning_curve.csv`.
+Candidate results: `{(args.out_dir / 'model_comparison.csv').as_posix()}`; learning-curve values: `{(args.out_dir / 'learning_curve.csv').as_posix()}`.
 
 AI assisted with the experiment implementation and generated report. Automated checks and scores are not represented as independent human verification; team review remains necessary. No final Kaggle model is selected here.
 """
