@@ -30,6 +30,15 @@ The saved validation IDs are shared across experiments; vocabulary/IDF use train
 The script saves `model.joblib`, `metrics.json`, and `validation_predictions.csv`
 under `outputs/baseline/`. Use `--out-dir outputs/run2` for another run.
 
+## Predict
+
+```sh
+python predict.py --test data/test.csv --sample data/sample_submission.csv
+```
+
+This writes `outputs/baseline/submission.csv` with AI probabilities in sample order.
+The file must be uploaded to Kaggle separately.
+
 ## Work split
 
 I set up the data checks and baseline; Bowei handles model experiments, and Zalan handles unlabeled data and error analysis.
