@@ -56,6 +56,8 @@ Bowei's model comparison and baseline learning curve are recorded in [q1_q2_resu
 
 Run `python improvement.py --train data/train.csv` to compare word and character features on the saved split. Scores, timings, models, and validation predictions are saved locally in `outputs/q5/`; use a new `--out-dir` to repeat.
 
+For a small character-model tuning run, use `python improvement.py --train data/train.csv --tune`; outputs go to `outputs/q5_tuning/`.
+
 ## AI assistance
 
 AI assists me with implementation. I review and check all AI-generated output before submitting.
