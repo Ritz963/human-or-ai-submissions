@@ -67,17 +67,32 @@ def noise_estimate(validation, val_probs, cutoffs):
             'val_error_rate_at_confidence': float(errors.sum() / max(confident.sum(), 1))}
 
 
+def bootstrap_difference(labels, baseline, other, draws=2000):
+    # Paired bootstrap over validation rows: 95% interval for AUROC(other) - AUROC(baseline).
+    rng = np.random.default_rng(SEED)
+    differences = []
+    for _ in range(draws):
+        rows = rng.integers(0, len(labels), len(labels))
+        if labels[rows].min() != labels[rows].max():
+            differences.append(roc_auc_score(labels[rows], other[rows])
+                               - roc_auc_score(labels[rows], baseline[rows]))
+    return [float(value) for value in np.percentile(differences, [2.5, 97.5])]
+
+
 def format_table(results):
     lines = ['| Method | Pseudo-labeled rows | Teacher cutoffs (human <= / AI >=) '
-             '| Est. pseudo-label error | Validation AUROC | Fit seconds |',
-             '|---|---:|---:|---:|---:|---:|']
+             '| Est. pseudo-label error | Validation AUROC | Change vs supervised (95% CI) '
+             '| Fit seconds |',
+             '|---|---:|---:|---:|---:|---:|---:|']
     for row in results:
         cutoffs = (f"{row['human_max_prob']:.3f} / {row['ai_min_prob']:.3f}"
                    if row['pseudo_rows'] else '-')
         noise = (f"{row['val_error_rate_at_confidence']:.2%} "
                  f"({row['val_rows_at_confidence']:,} val rows)" if row['pseudo_rows'] else '-')
+        change = (f"{row['auroc_change']:+.6f} [{row['change_ci_low']:+.5f}, "
+                  f"{row['change_ci_high']:+.5f}]" if row['pseudo_rows'] else '-')
         lines.append(f"| {row['method']} | {row['pseudo_rows']:,} | {cutoffs} | {noise} "
-                     f"| {row['validation_auroc']:.6f} | {row['fit_seconds']:.1f} |")
+                     f"| {row['validation_auroc']:.6f} | {change} | {row['fit_seconds']:.1f} |")
     return '\n'.join(lines)
 
 
@@ -134,9 +149,14 @@ def main():
         print(f'Fitting student with top {fraction:.0%} pseudo-labels...', flush=True)
         rows, cutoffs = pseudo_label(unlabeled, teacher_probs, fraction)
         _, student_probs, seconds = fit_and_score(pd.concat([training, rows]), validation)
+        labels = validation['label'].to_numpy()
+        ci_low, ci_high = bootstrap_difference(labels, val_probs, student_probs)
         results.append({'method': f'Pseudo-labels, top {fraction:.0%}', 'fraction': fraction,
                         'pseudo_rows': len(rows),
                         'validation_auroc': roc_auc_score(validation['label'], student_probs),
+                        'auroc_change': roc_auc_score(labels, student_probs) - results[0]['validation_auroc'],
+                        'change_ci_low': ci_low, 'change_ci_high': ci_high,
+                        'predictions_flipped_at_0.5': int(((val_probs >= 0.5) != (student_probs >= 0.5)).sum()),
                         'fit_seconds': seconds, **cutoffs,
                         **noise_estimate(validation, val_probs, cutoffs)})
         print(json.dumps(results[-1]), flush=True)
@@ -162,7 +182,7 @@ def main():
 
 {format_table(results)}
 
-Fit seconds use one native thread and include vectorization. Choosing a fraction by these scores uses the validation set, so treat small differences as noise.
+Fit seconds use one native thread and include vectorization. The 95% interval is a paired bootstrap (2,000 resamples of the validation rows, seed {SEED}); an interval containing 0 means the change is within validation noise. Choosing a fraction by these scores uses the validation set.
 
 ## Reproduction
 
