@@ -46,11 +46,15 @@ The saved model reproduced the validation predictions, and the 3,000-row submiss
 
 ## Work split
 
-I set up the data checks and baseline; Bowei handles model experiments, and Zalan handles unlabeled data and error analysis.
+I set up the data checks and baseline and handle Q5; Bowei handles Q1/Q2, and Zalan handles unlabeled data and error analysis (Q3/Q4).
 
 ## Q1/Q2 experiments
 
 Bowei's model comparison and baseline learning curve are recorded in [q1_q2_results.md](q1_q2_results.md). Reproduce them with `python experiments.py --train data/train.csv`.
+
+## Q5 improvement experiment
+
+Run `python improvement.py --train data/train.csv` to compare word and character features on the saved split. Scores, timings, models, and validation predictions are saved locally in `outputs/q5/`; use a new `--out-dir` to repeat.
 
 ## AI assistance
 
