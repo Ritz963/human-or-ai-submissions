@@ -58,6 +58,14 @@ Run `python improvement.py --train data/train.csv` to compare word and character
 
 For a small character-model tuning run, use `python improvement.py --train data/train.csv --tune`; outputs go to `outputs/q5_tuning/`.
 
+## Next: Zalan (Q3/Q4)
+
+Pull `submission/group-number-29` and run the tuning command above to recreate local outputs; models and predictions are not pushed. My current best is lowercase character TF-IDF (2-5 grams), logistic regression C=30, validation AUROC 0.976251. `train.py` still runs the original word baseline.
+
+- Q3: compare supervised-only training against an unlabeled-data experiment using the same model settings and saved split. A fresh model is `build_candidate('character').set_params(classifier__C=30, features__ngram_range=(2, 5))` from `improvement.py`. Never include validation rows in fitting or pseudo-labeling.
+- Q4: use `outputs/q5_tuning/char_2_5_validation_predictions.csv`, joined to text by ID. Evaluate at least three text-length groups and inspect five false positives and five false negatives, stating the threshold and separating observed patterns from hypotheses. If Q3 changes the selected model, regenerate its validation predictions for Q4.
+- Keep report answers outside Git. Record measured results locally, review the code/output, and coordinate before editing. Final model selection, full-data refit, and Kaggle submission come after this handoff.
+
 ## AI assistance
 
 AI assists me with implementation. I review and check all AI-generated output before submitting.
