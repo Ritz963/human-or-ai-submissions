@@ -58,6 +58,10 @@ Run `python improvement.py --train data/train.csv` to compare word and character
 
 For a small character-model tuning run, use `python improvement.py --train data/train.csv --tune`; outputs go to `outputs/q5_tuning/`.
 
+## Q3 unlabeled-data experiment
+
+Run `python unlabeled.py --train data/train.csv --unlabeled data/unlabeled.csv` (about 6 minutes on one thread). It fits the Q5 character model on the 8,000 training rows, pseudo-labels the most confident 10/25/50/100% of `unlabeled.csv` (balanced by class), refits, and scores each on the fixed validation set with paired bootstrap intervals. Validation rows are never fit or pseudo-labeled, and `test.csv` is not used. Results are in [q3_results.md](q3_results.md); local outputs go to `outputs/q3/`.
+
 ## Next: Zalan (Q3/Q4)
 
 Pull `submission/group-number-29` and run the tuning command above to recreate local outputs; models and predictions are not pushed. My current best is lowercase character TF-IDF (2-5 grams), logistic regression C=30, validation AUROC 0.976251. `train.py` still runs the original word baseline.
