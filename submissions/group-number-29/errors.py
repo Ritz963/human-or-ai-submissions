@@ -97,6 +97,25 @@ def length_table(rows):
     return '\n'.join(lines)
 
 
+def confident_errors(validation, probs, threshold=0.5, count=5):
+    # Most confident mistakes: humans with the highest P(AI), AI passages with the lowest.
+    rows = validation[['id', 'label']].assign(probability_ai=probs,
+                                              words=validation['text'].str.split().str.len())
+    fp = rows[(rows['label'] == 0) & (rows['probability_ai'] >= threshold)]
+    fn = rows[(rows['label'] == 1) & (rows['probability_ai'] < threshold)]
+    fp = fp.sort_values(['probability_ai', 'id'], ascending=[False, True])
+    fn = fn.sort_values(['probability_ai', 'id'])
+    return len(fp), len(fn), pd.concat([fp.head(count).assign(error='FP'),
+                                        fn.head(count).assign(error='FN')])
+
+
+def error_table(errors):
+    lines = ['| ID | Error type | P(AI) | Words |', '|---|---|---:|---:|']
+    for row in errors.itertuples():
+        lines.append(f'| {row.id} | {row.error} | {row.probability_ai:.4f} | {row.words} |')
+    return '\n'.join(lines)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--train', type=Path, required=True)
@@ -142,6 +161,8 @@ def main():
     selected = next(row for row in rows if row['C'] == SELECTED_C)
     lengths = length_bins(validation, selected_val_probs)
     pd.DataFrame(lengths).to_csv(args.out_dir / 'length_bins.csv', index=False)
+    fp_count, fn_count, errors = confident_errors(validation, selected_val_probs)
+    errors.to_csv(args.out_dir / 'confident_errors.csv', index=False)
     words = validation['text'].str.split().str.len()
     medians = '; '.join([f"overall {words[validation['label'] == 0].median():.0f} vs "
                          f"{words[validation['label'] == 1].median():.0f}"] +
@@ -172,6 +193,12 @@ Words are whitespace-separated tokens. Bins are equal-count terciles of the vali
 {length_table(lengths)}
 
 Median words, human vs AI: {medians}.
+
+## Q4.3: most confident validation errors
+
+Threshold 0.5: a false positive (FP) is a human passage with P(AI) >= 0.5; a false negative (FN) is an AI passage with P(AI) < 0.5. At this threshold the model makes **{fp_count} FPs** (of 1,000 human) and **{fn_count} FNs** (of 1,000 AI). Listed are the five most confident of each: FPs with the highest P(AI), FNs with the lowest. Passage text is not reproduced here; failure hypotheses are written in the report after reading each passage.
+
+{error_table(errors)}
 
 ## Reproduction
 
