@@ -59,6 +59,44 @@ def gap_table(rows):
     return '\n'.join(lines)
 
 
+def length_bins(validation, probs):
+    # Equal-count word-count terciles of the validation set.
+    words = validation['text'].str.split().str.len()
+    bins = pd.qcut(words, 3, labels=['Short', 'Medium', 'Long'])
+    labels = validation['label'].to_numpy()
+    rng = np.random.default_rng(SEED)
+    rows = []
+    for name in bins.cat.categories:
+        mask = (bins == name).to_numpy()
+        y, p = labels[mask], probs[mask]
+        draws = []
+        for _ in range(2000):
+            sample = rng.integers(0, len(y), len(y))
+            if y[sample].min() != y[sample].max():
+                draws.append(roc_auc_score(y[sample], p[sample]))
+        rows.append({'bin': name, 'min_words': int(words[mask].min()),
+                     'max_words': int(words[mask].max()), 'count': int(mask.sum()),
+                     'human': int((y == 0).sum()), 'ai': int((y == 1).sum()),
+                     'auroc': roc_auc_score(y, p),
+                     'ci_low': float(np.percentile(draws, 2.5)),
+                     'ci_high': float(np.percentile(draws, 97.5)),
+                     'accuracy_at_0.5': accuracy_score(y, p >= 0.5),
+                     'median_words_human': float(words[mask][y == 0].median()),
+                     'median_words_ai': float(words[mask][y == 1].median())})
+    return rows
+
+
+def length_table(rows):
+    lines = ['| Bin (words) | Count | Human / AI | Validation AUROC (95% CI) | Accuracy at 0.5 |',
+             '|---|---:|---:|---:|---:|']
+    for row in rows:
+        lines.append(f"| {row['bin']} ({row['min_words']}-{row['max_words']}) | {row['count']:,} "
+                     f"| {row['human']} / {row['ai']} "
+                     f"| {row['auroc']:.4f} [{row['ci_low']:.4f}, {row['ci_high']:.4f}] "
+                     f"| {row['accuracy_at_0.5']:.4f} |")
+    return '\n'.join(lines)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--train', type=Path, required=True)
@@ -93,6 +131,7 @@ def main():
                      'validation': summarize(validation['label'], val_probs)})
         print(json.dumps(rows[-1]), flush=True)
         if c == SELECTED_C:
+            selected_val_probs = val_probs
             # Saved for the subgroup and error analysis; joined to text by ID, never by position.
             validation[['id', 'label']].assign(probability_ai=val_probs).to_csv(
                 args.out_dir / 'validation_predictions.csv', index=False)
@@ -101,6 +140,13 @@ def main():
     (args.out_dir / 'gap.json').write_text(json.dumps(rows, indent=2) + '\n')
 
     selected = next(row for row in rows if row['C'] == SELECTED_C)
+    lengths = length_bins(validation, selected_val_probs)
+    pd.DataFrame(lengths).to_csv(args.out_dir / 'length_bins.csv', index=False)
+    words = validation['text'].str.split().str.len()
+    medians = '; '.join([f"overall {words[validation['label'] == 0].median():.0f} vs "
+                         f"{words[validation['label'] == 1].median():.0f}"] +
+                        [f"{row['bin'].lower()} {row['median_words_human']:.0f} vs "
+                         f"{row['median_words_ai']:.0f}" for row in lengths])
     report = f"""# Q4: generalization and error analysis
 
 ## Protocol
@@ -118,6 +164,14 @@ To check whether the gap is regularization-driven, the same features were refit 
 {gap_table(rows)}
 
 Log loss and the confident share describe how extreme the probabilities are; AUROC depends only on ranking.
+
+## Q4.2: validation AUROC by text length
+
+Words are whitespace-separated tokens. Bins are equal-count terciles of the validation set's word counts, chosen so each AUROC uses about the same number of passages. Intervals are percentile bootstraps (2,000 resamples within each bin, seed {SEED}).
+
+{length_table(lengths)}
+
+Median words, human vs AI: {medians}.
 
 ## Reproduction
 
