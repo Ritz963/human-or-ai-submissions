@@ -62,13 +62,26 @@ For a small character-model tuning run, use `python improvement.py --train data/
 
 Run `python unlabeled.py --train data/train.csv --unlabeled data/unlabeled.csv` (about 6 minutes on one thread). It fits the Q5 character model on the 8,000 training rows, pseudo-labels the most confident 10/25/50/100% of `unlabeled.csv` (balanced by class), refits, and scores each on the fixed validation set with paired bootstrap intervals. Validation rows are never fit or pseudo-labeled, and `test.csv` is not used. Results are in [q3_results.md](q3_results.md); local outputs go to `outputs/q3/`.
 
-## Next: Zalan (Q3/Q4)
+## Current model
 
-Pull `submission/group-number-29` and run the tuning command above to recreate local outputs; models and predictions are not pushed. My current best is lowercase character TF-IDF (2-5 grams), logistic regression C=30, validation AUROC 0.976251. `train.py` still runs the original word baseline.
+From my online research, I decided to try writing-style features alongside word TF-IDF (individual words and word pairs). I reviewed the changes: we use 20 measurements, including sentence length, repetition, punctuation and line breaks, with logistic regression C=10.
 
-- Q3: compare supervised-only training against an unlabeled-data experiment using the same model settings and saved split. A fresh model is `build_candidate('character').set_params(classifier__C=30, features__ngram_range=(2, 5))` from `improvement.py`. Never include validation rows in fitting or pseudo-labeling.
-- Q4: use `outputs/q5_tuning/char_2_5_validation_predictions.csv`, joined to text by ID. Evaluate at least three text-length groups and inspect five false positives and five false negatives, stating the threshold and separating observed patterns from hypotheses. If Q3 changes the selected model, regenerate its validation predictions for Q4.
-- Keep report answers outside Git. Record measured results locally, review the code/output, and coordinate before editing. Final model selection, full-data refit, and Kaggle submission come after this handoff.
+The combined model scored 0.988061 on our fixed validation set and 0.95368 on Kaggle's public leaderboard. We selected it using three grouped folds within the training partition, then refit on all 10,000 labeled rows for submission. Flattening whitespace dropped validation AUROC to 0.868741, so formatting is a limitation.
+
+Run these from this folder to reproduce the experiment and submission:
+
+```sh
+python style_experiment.py --train data/train.csv
+python predict.py --model outputs/style_experiment/final_model.joblib --test data/test.csv --sample data/sample_submission.csv --out outputs/style_experiment/submission.csv
+```
+
+Outputs stay local. Use a fresh `--out-dir` if the experiment folder already contains files, and adjust the prediction paths to match. The grouped folds approximate topics, not true source domains.
+
+## Next steps
+
+Zalan: pull the branch and run the style experiment above to recreate the outputs. Update Q4 using `outputs/style_experiment/word_and_style_validation.csv` and the train/validation scores in `summary.json`. The prediction columns are `id`, `label`, and `probability_ai`; join text by ID. Use the original probabilities, not `flat_probability_ai`, for the main analysis. Do not evaluate the full-data `final_model.joblib` on validation rows, since it trained on them.
+
+Q3 can remain the earlier character-model experiment, clearly labeled. I will update Q5 and the final method/reproduction details; Bowei should check that Q1's selection wording reflects the new final model. Keep report answers outside Git.
 
 ## AI assistance
 
