@@ -17,24 +17,29 @@ from sklearn.metrics import roc_auc_score
 from threadpoolctl import threadpool_limits
 
 from improvement import build_candidate
+from style_experiment import build_model as build_style_model
 from train import SEED, load_data, split_data
 
 # Pseudo-label the most confident fraction of unlabeled rows, split evenly by class.
 FRACTIONS = (0.1, 0.25, 0.5, 1.0)
 
 
-def build_selected():
-    # Current best supervised model from the Q5 tuning run.
-    return build_candidate('character').set_params(classifier__C=30.0,
-                                                   features__ngram_range=(2, 5))
+# Final model (word 1-2 TF-IDF + 20 style features) and the earlier Q5 character model.
+MODELS = {
+    'word_and_style': ('word 1-2 TF-IDF + 20 standardized style features, logistic regression C=10',
+                       lambda: build_style_model('word_and_style')),
+    'character': ('lowercase char TF-IDF 2-5, logistic regression C=30',
+                  lambda: build_candidate('character').set_params(classifier__C=30.0,
+                                                                  features__ngram_range=(2, 5))),
+}
 
 
 def normalize(texts):
     return texts.str.normalize('NFKC').str.casefold().str.split().str.join(' ')
 
 
-def fit_and_score(training, validation):
-    model = build_selected()
+def fit_and_score(build, training, validation):
+    model = build()
     start = time.perf_counter()
     with threadpool_limits(limits=1), warnings.catch_warnings():
         warnings.simplefilter('error', ConvergenceWarning)
@@ -101,8 +106,10 @@ def main():
     parser.add_argument('--train', type=Path, required=True)
     parser.add_argument('--unlabeled', type=Path, required=True)
     parser.add_argument('--split', type=Path, default=Path(__file__).with_name('validation_ids.json'))
+    parser.add_argument('--model', choices=MODELS, default='word_and_style')
     parser.add_argument('--out-dir', type=Path, default=Path('outputs/q3'))
     args = parser.parse_args()
+    description, build = MODELS[args.model]
     if args.out_dir.exists() and any(args.out_dir.iterdir()):
         parser.error('Output directory is not empty; choose a new --out-dir')
     data = load_data(args.train, labeled=True)
@@ -125,7 +132,7 @@ def main():
         'python': platform.python_version(), 'sklearn': sklearn.__version__,
         'train_rows': len(training), 'validation_rows': len(validation),
         'unlabeled_rows': len(unlabeled), 'native_threads': 1,
-        'model': 'lowercase char TF-IDF 2-5, logistic regression C=30',
+        'model': description,
         'fractions': list(FRACTIONS),
         'protocol': 'teacher fit on 8,000 training rows; one round; balanced top-k by teacher '
                     'probability; student refits features and classifier on train + pseudo rows',
@@ -133,7 +140,7 @@ def main():
     (args.out_dir / 'metadata.json').write_text(json.dumps(metadata, indent=2) + '\n')
 
     print('Fitting supervised teacher...', flush=True)
-    teacher, val_probs, seconds = fit_and_score(training, validation)
+    teacher, val_probs, seconds = fit_and_score(build, training, validation)
     teacher_probs = teacher.predict_proba(unlabeled['text'])[:, list(teacher.classes_).index(1)]
     pd.DataFrame({'id': unlabeled['id'], 'probability_ai': teacher_probs}).to_csv(
         args.out_dir / 'unlabeled_teacher_probabilities.csv', index=False)
@@ -148,7 +155,7 @@ def main():
     for fraction in FRACTIONS:
         print(f'Fitting student with top {fraction:.0%} pseudo-labels...', flush=True)
         rows, cutoffs = pseudo_label(unlabeled, teacher_probs, fraction)
-        _, student_probs, seconds = fit_and_score(pd.concat([training, rows]), validation)
+        _, student_probs, seconds = fit_and_score(build, pd.concat([training, rows]), validation)
         labels = validation['label'].to_numpy()
         ci_low, ci_high = bootstrap_difference(labels, val_probs, student_probs)
         results.append({'method': f'Pseudo-labels, top {fraction:.0%}', 'fraction': fraction,
@@ -170,7 +177,7 @@ def main():
 ## Protocol
 
 - Code revision: `{commit}` (dirty: {dirty}); seed: `{SEED}`; Python: `{platform.python_version()}`; scikit-learn `{sklearn.__version__}`.
-- Model: lowercase character TF-IDF (2-5 grams) + logistic regression, C=30 (best Q5 setting), unchanged across rows.
+- Model: {description} (`--model {args.model}`), unchanged across rows.
 - Teacher: fit on the 8,000 training rows only; it scores all {len(unlabeled):,} unlabeled passages.
 - Pseudo-labels: one round. For each fraction, the k most human-like rows get label 0 and the k most AI-like get label 1 (k = fraction x {len(unlabeled):,} / 2), keeping the added rows balanced.
 - Student: a fresh pipeline (vocabulary, IDF and classifier) fit on training + pseudo-labeled rows, scored on the same fixed 2,000-row validation set.
@@ -187,7 +194,7 @@ Fit seconds use one native thread and include vectorization. The 95% interval is
 ## Reproduction
 
 ```sh
-.venv/bin/python unlabeled.py --train data/train.csv --unlabeled data/unlabeled.csv
+.venv/bin/python unlabeled.py --train data/train.csv --unlabeled data/unlabeled.csv --model {args.model} --out-dir {args.out_dir.as_posix()}
 ```
 
 Local outputs: `{args.out_dir.as_posix()}/` (results, teacher probabilities, validation predictions; not committed).
