@@ -34,6 +34,11 @@ MODELS = {
 }
 
 
+def build_selected():
+    # The earlier Q5 character model, kept so existing callers still work.
+    return MODELS['character'][1]()
+
+
 def normalize(texts):
     return texts.str.normalize('NFKC').str.casefold().str.split().str.join(' ')
 
