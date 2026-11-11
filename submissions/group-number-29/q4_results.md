@@ -2,24 +2,26 @@
 
 ## Protocol
 
-- Code revision: `820f443dfa19d1b8d8a4caac12067a6654f60595` (dirty: False); seed: `42`; Python: `3.11.13`; scikit-learn `1.4.2`.
-- Selected model: lowercase character TF-IDF (2-5 grams) + logistic regression, C=30, fit on the 8,000 training rows only (100,000 features).
+- Code revision: `93271af271cfb1ec255912b19f6c0aab4d339ac2` (dirty: False); seed: `42`; Python: `3.11.13`; scikit-learn `1.4.2`.
+- Selected model: word 1-2 TF-IDF + 20 standardized style features, logistic regression C=10 (`--model word_and_style`), fit on the 8,000 training rows only (100,020 features).
 - All numbers use the fixed 2,000-row validation set; hidden test labels are not used.
 
 ## Q4.1: training vs validation
 
-The selected model scores **1.000000** training AUROC and **0.976244** validation AUROC (gap 0.023756).
+The selected model scores **0.999980** training AUROC and **0.988061** validation AUROC (gap 0.011919).
 
-To check whether the gap is regularization-driven, the same features were refit with stronger L2 regularization (smaller C). Only C=30 is the selected model; the other rows are diagnostics, not a new selection.
+To check whether the gap is regularization-driven, the same features were refit with other L2 strengths (smaller C = stronger regularization). Only C=10 is the selected model; the other rows are diagnostics, not a new selection.
 
 | C | Train AUROC | Validation AUROC | Gap | Train / val accuracy at 0.5 | Train / val log loss | Confident (<=0.01 or >=0.99) train / val | Fit seconds |
 |---:|---:|---:|---:|---:|---:|---:|---:|
-| 1 | 0.994330 | 0.969451 | 0.024879 | 0.9605 / 0.9105 | 0.2844 / 0.3420 | 0.0% / 0.0% | 20.8 |
-| 3 | 0.999345 | 0.974317 | 0.025028 | 0.9871 / 0.9215 | 0.1763 / 0.2692 | 0.8% / 0.6% | 21.2 |
-| 10 | 0.999999 | 0.976039 | 0.023960 | 0.9994 / 0.9245 | 0.0892 / 0.2211 | 11.2% / 9.8% | 21.9 |
-| 30 | 1.000000 | 0.976244 | 0.023756 | 1.0000 / 0.9250 | 0.0425 / 0.2007 | 29.2% / 25.8% | 32.0 |
+| 1 | 0.990305 | 0.984606 | 0.005699 | 0.9679 / 0.9580 | 0.1129 / 0.1341 | 42.2% / 43.2% | 8.1 |
+| 3 | 0.996676 | 0.986734 | 0.009942 | 0.9839 / 0.9645 | 0.0732 / 0.1215 | 46.0% / 47.5% | 8.3 |
+| 10 | 0.999980 | 0.988061 | 0.011919 | 0.9964 / 0.9670 | 0.0345 / 0.1123 | 55.8% / 57.0% | 9.2 |
+| 30 | 1.000000 | 0.988527 | 0.011473 | 1.0000 / 0.9680 | 0.0156 / 0.1113 | 69.2% / 68.0% | 10.2 |
 
 Log loss and the confident share describe how extreme the probabilities are; AUROC depends only on ranking.
+
+Formatting check: with every whitespace run in the validation passages collapsed to one space (no line breaks or paragraph gaps), the selected model's validation AUROC is **0.868740** (vs 0.988061 on the original text).
 
 ## Q4.2: validation AUROC by text length
 
@@ -27,33 +29,33 @@ Words are whitespace-separated tokens. Bins are equal-count terciles of the vali
 
 | Bin (words) | Count | Human / AI | Validation AUROC (95% CI) | Accuracy at 0.5 |
 |---|---:|---:|---:|---:|
-| Short (75-175) | 667 | 319 / 348 | 0.9771 [0.9662, 0.9864] | 0.9265 |
-| Medium (176-239) | 669 | 382 / 287 | 0.9755 [0.9644, 0.9848] | 0.9253 |
-| Long (240-350) | 664 | 299 / 365 | 0.9799 [0.9697, 0.9884] | 0.9232 |
+| Short (75-175) | 667 | 319 / 348 | 0.9812 [0.9711, 0.9896] | 0.9370 |
+| Medium (176-239) | 669 | 382 / 287 | 0.9976 [0.9939, 0.9997] | 0.9910 |
+| Long (240-350) | 664 | 299 / 365 | 0.9870 [0.9759, 0.9954] | 0.9729 |
 
 Median words, human vs AI: overall 204 vs 210; short 153 vs 137; medium 206 vs 209; long 270 vs 280.
 
 ## Q4.3: most confident validation errors
 
-Threshold 0.5: a false positive (FP) is a human passage with P(AI) >= 0.5; a false negative (FN) is an AI passage with P(AI) < 0.5. At this threshold the model makes **46 FPs** (of 1,000 human) and **104 FNs** (of 1,000 AI). Listed are the five most confident of each: FPs with the highest P(AI), FNs with the lowest. Passage text is not reproduced here; failure hypotheses are written in the report after reading each passage.
+Threshold 0.5: a false positive (FP) is a human passage with P(AI) >= 0.5; a false negative (FN) is an AI passage with P(AI) < 0.5. At this threshold the model makes **10 FPs** (of 1,000 human) and **56 FNs** (of 1,000 AI). Listed are the five most confident of each: FPs with the highest P(AI), FNs with the lowest. Passage text is not reproduced here; failure hypotheses are written in the report after reading each passage.
 
 | ID | Error type | P(AI) | Words |
 |---|---|---:|---:|
-| 969 | FP | 0.9347 | 182 |
-| 8350 | FP | 0.8725 | 203 |
-| 8785 | FP | 0.8719 | 157 |
-| 4587 | FP | 0.8542 | 158 |
-| 5011 | FP | 0.8083 | 220 |
-| 1810 | FN | 0.0006 | 277 |
-| 2703 | FN | 0.0064 | 255 |
-| 3062 | FN | 0.0077 | 170 |
-| 2989 | FN | 0.0095 | 170 |
-| 679 | FN | 0.0313 | 205 |
+| 8448 | FP | 0.9999 | 159 |
+| 7376 | FP | 0.9691 | 229 |
+| 4085 | FP | 0.8150 | 106 |
+| 3291 | FP | 0.7528 | 112 |
+| 8267 | FP | 0.7289 | 128 |
+| 4114 | FN | 0.0011 | 300 |
+| 1429 | FN | 0.0013 | 320 |
+| 8444 | FN | 0.0013 | 327 |
+| 5762 | FN | 0.0060 | 334 |
+| 1810 | FN | 0.0115 | 277 |
 
 ## Reproduction
 
 ```sh
-.venv/bin/python errors.py --train data/train.csv
+.venv/bin/python errors.py --train data/train.csv --model word_and_style --out-dir outputs/q4_style
 ```
 
-Local outputs: `outputs/q4/` (gap.json, train/validation predictions; not committed).
+Local outputs: `outputs/q4_style/` (gap.json, train/validation predictions; not committed).
