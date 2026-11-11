@@ -17,24 +17,27 @@ from sklearn.metrics import accuracy_score, log_loss, roc_auc_score
 from threadpoolctl import threadpool_limits
 
 from train import SEED, load_data, split_data
-from unlabeled import build_selected
+from unlabeled import MODELS
 
-SELECTED_C = 30.0
-# Same features with stronger regularization, to see how the train/validation gap responds.
-GAP_C_VALUES = (1.0, 3.0, 10.0, SELECTED_C)
+# Selected C for each model; the other C values only show how the train/validation gap responds.
+SELECTED_C = {'word_and_style': 10.0, 'character': 30.0}
+GAP_C_VALUES = (1.0, 3.0, 10.0, 30.0)
 
 
-def fit_and_predict(c, training, validation):
-    model = build_selected().set_params(classifier__C=c)
+def fit_and_predict(build, c, training, validation):
+    model = build().set_params(classifier__C=c)
     start = time.perf_counter()
     with threadpool_limits(limits=1), warnings.catch_warnings():
         warnings.simplefilter('error', ConvergenceWarning)
         model.fit(training['text'], training['label'])
     seconds = time.perf_counter() - start
     ai_column = list(model.classes_).index(1)
+    # Same passages with every whitespace run collapsed to one space, to test formatting reliance.
+    flat_text = validation['text'].str.replace(r'\s+', ' ', regex=True)
     return (model['classifier'].coef_.shape[1], seconds,
             model.predict_proba(training['text'])[:, ai_column],
-            model.predict_proba(validation['text'])[:, ai_column])
+            model.predict_proba(validation['text'])[:, ai_column],
+            model.predict_proba(flat_text)[:, ai_column])
 
 
 def summarize(labels, probs):
@@ -120,8 +123,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--train', type=Path, required=True)
     parser.add_argument('--split', type=Path, default=Path(__file__).with_name('validation_ids.json'))
+    parser.add_argument('--model', choices=MODELS, default='word_and_style')
     parser.add_argument('--out-dir', type=Path, default=Path('outputs/q4'))
     args = parser.parse_args()
+    description, build = MODELS[args.model]
+    selected_c = SELECTED_C[args.model]
     if args.out_dir.exists() and any(args.out_dir.iterdir()):
         parser.error('Output directory is not empty; choose a new --out-dir')
     data = load_data(args.train, labeled=True)
@@ -136,7 +142,7 @@ def main():
         'split_sha256': hashlib.sha256(args.split.read_bytes()).hexdigest(),
         'python': platform.python_version(), 'sklearn': sklearn.__version__,
         'train_rows': len(training), 'validation_rows': len(validation), 'native_threads': 1,
-        'model': 'lowercase char TF-IDF 2-5, logistic regression', 'selected_C': SELECTED_C,
+        'model': description, 'selected_C': selected_c,
         'gap_C_values': list(GAP_C_VALUES),
     }
     (args.out_dir / 'metadata.json').write_text(json.dumps(metadata, indent=2) + '\n')
@@ -144,21 +150,24 @@ def main():
     rows = []
     for c in GAP_C_VALUES:
         print(f'Fitting C={c:g}...', flush=True)
-        features, seconds, train_probs, val_probs = fit_and_predict(c, training, validation)
+        features, seconds, train_probs, val_probs, flat_probs = fit_and_predict(
+            build, c, training, validation)
         rows.append({'C': c, 'features': features, 'fit_seconds': seconds,
                      'train': summarize(training['label'], train_probs),
-                     'validation': summarize(validation['label'], val_probs)})
+                     'validation': summarize(validation['label'], val_probs),
+                     'flat_validation_auroc': roc_auc_score(validation['label'], flat_probs)})
         print(json.dumps(rows[-1]), flush=True)
-        if c == SELECTED_C:
+        if c == selected_c:
             selected_val_probs = val_probs
             # Saved for the subgroup and error analysis; joined to text by ID, never by position.
-            validation[['id', 'label']].assign(probability_ai=val_probs).to_csv(
+            validation[['id', 'label']].assign(probability_ai=val_probs,
+                                               flat_probability_ai=flat_probs).to_csv(
                 args.out_dir / 'validation_predictions.csv', index=False)
             training[['id', 'label']].assign(probability_ai=train_probs).to_csv(
                 args.out_dir / 'train_predictions.csv', index=False)
     (args.out_dir / 'gap.json').write_text(json.dumps(rows, indent=2) + '\n')
 
-    selected = next(row for row in rows if row['C'] == SELECTED_C)
+    selected = next(row for row in rows if row['C'] == selected_c)
     lengths = length_bins(validation, selected_val_probs)
     pd.DataFrame(lengths).to_csv(args.out_dir / 'length_bins.csv', index=False)
     fp_count, fn_count, errors = confident_errors(validation, selected_val_probs)
@@ -173,18 +182,20 @@ def main():
 ## Protocol
 
 - Code revision: `{commit}` (dirty: {dirty}); seed: `{SEED}`; Python: `{platform.python_version()}`; scikit-learn `{sklearn.__version__}`.
-- Selected model: lowercase character TF-IDF (2-5 grams) + logistic regression, C={SELECTED_C:g}, fit on the 8,000 training rows only ({selected['features']:,} features).
+- Selected model: {description} (`--model {args.model}`), fit on the 8,000 training rows only ({selected['features']:,} features).
 - All numbers use the fixed 2,000-row validation set; hidden test labels are not used.
 
 ## Q4.1: training vs validation
 
 The selected model scores **{selected['train']['auroc']:.6f}** training AUROC and **{selected['validation']['auroc']:.6f}** validation AUROC (gap {selected['train']['auroc'] - selected['validation']['auroc']:.6f}).
 
-To check whether the gap is regularization-driven, the same features were refit with stronger L2 regularization (smaller C). Only C={SELECTED_C:g} is the selected model; the other rows are diagnostics, not a new selection.
+To check whether the gap is regularization-driven, the same features were refit with other L2 strengths (smaller C = stronger regularization). Only C={selected_c:g} is the selected model; the other rows are diagnostics, not a new selection.
 
 {gap_table(rows)}
 
 Log loss and the confident share describe how extreme the probabilities are; AUROC depends only on ranking.
+
+Formatting check: with every whitespace run in the validation passages collapsed to one space (no line breaks or paragraph gaps), the selected model's validation AUROC is **{selected['flat_validation_auroc']:.6f}** (vs {selected['validation']['auroc']:.6f} on the original text).
 
 ## Q4.2: validation AUROC by text length
 
@@ -203,7 +214,7 @@ Threshold 0.5: a false positive (FP) is a human passage with P(AI) >= 0.5; a fal
 ## Reproduction
 
 ```sh
-.venv/bin/python errors.py --train data/train.csv
+.venv/bin/python errors.py --train data/train.csv --model {args.model} --out-dir {args.out_dir.as_posix()}
 ```
 
 Local outputs: `{args.out_dir.as_posix()}/` (gap.json, train/validation predictions; not committed).
