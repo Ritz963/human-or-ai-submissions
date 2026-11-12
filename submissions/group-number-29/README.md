@@ -1,11 +1,16 @@
-# Group Number 29
+# Team 29
 
-Members: Ritvik Thakur, Bowei, and Zalan. Full names and NetIDs still need to
-be filled in before submission. Confirm the exact Kaggle team display name.
+## Team
 
-## Setup
+Kaggle team name: **Team 29**
 
-Tested environment: Python 3.11.9.
+- Ritvik Thakur (rt556)
+- Bowei Huang (bh654)
+- Zalan Kaman (zk239)
+
+## Python and dependencies
+
+Python 3.11. Install the pinned dependencies from the repository root:
 
 ```sh
 cd submissions/group-number-29
@@ -14,75 +19,45 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Download the supplied competition CSVs from Kaggle into `data/`. Never commit
-them, model files, or predictions. The starter CSV is already part of train.csv.
-All team changes belong in this folder; leave the course template files alone.
+Place the supplied competition CSVs in `data/`. Run the remaining commands from this team folder.
 
-## Train and validate
-
-```sh
-python train.py --train data/train.csv
-```
-
-I use word TF-IDF and logistic regression with seed 42 and a fixed 8,000/2,000 split.
-The saved validation IDs are shared across experiments; vocabulary/IDF use training rows only.
-
-The script saves `model.joblib`, `metrics.json`, and `validation_predictions.csv`
-under `outputs/baseline/`. Use `--out-dir outputs/run2` for another run.
-
-## Predict
-
-```sh
-python predict.py --test data/test.csv --sample data/sample_submission.csv
-```
-
-This writes `outputs/baseline/submission.csv` with AI probabilities in sample order.
-The file must be uploaded to Kaggle separately.
-
-## Baseline result
-
-My November 3 run (`9a0e160`, seed 42, settings in `train.py`) scored **0.983512 training AUROC** and **0.916527 validation AUROC**; fitting took 1.018s on this laptop.
-The saved model reproduced the validation predictions, and the 3,000-row submission passed checks. No Kaggle upload yet; this is one local holdout result.
-
-## Work split
-
-I set up the data checks and baseline and handle Q5; Bowei handles Q1/Q2, and Zalan handles unlabeled data and error analysis (Q3/Q4).
-
-## Q1/Q2 experiments
-
-Bowei's model comparison and baseline learning curve are recorded in [q1_q2_results.md](q1_q2_results.md). Reproduce them with `python experiments.py --train data/train.csv`.
-
-## Q5 improvement experiment
-
-Run `python improvement.py --train data/train.csv` to compare word and character features on the saved split. Scores, timings, models, and validation predictions are saved locally in `outputs/q5/`; use a new `--out-dir` to repeat.
-
-For a small character-model tuning run, use `python improvement.py --train data/train.csv --tune`; outputs go to `outputs/q5_tuning/`.
-
-## Q3 unlabeled-data experiment
-
-Run `python unlabeled.py --train data/train.csv --unlabeled data/unlabeled.csv` (about 6 minutes on one thread). It fits the Q5 character model on the 8,000 training rows, pseudo-labels the most confident 10/25/50/100% of `unlabeled.csv` (balanced by class), refits, and scores each on the fixed validation set with paired bootstrap intervals. Validation rows are never fit or pseudo-labeled, and `test.csv` is not used. Results are in [q3_results.md](q3_results.md); local outputs go to `outputs/q3/`.
-
-## Current model
-
-From my online research, I decided to try writing-style features alongside word TF-IDF (individual words and word pairs). I reviewed the changes: we use 20 measurements, including sentence length, repetition, punctuation and line breaks, with logistic regression C=10.
-
-The combined model scored 0.988061 on our fixed validation set and 0.95368 on Kaggle's public leaderboard. We selected it using three grouped folds within the training partition, then refit on all 10,000 labeled rows for submission. Flattening whitespace dropped validation AUROC to 0.868741, so formatting is a limitation.
-
-Run these from this folder to reproduce the experiment and submission:
+## Training and validation
 
 ```sh
 python style_experiment.py --train data/train.csv
-python predict.py --model outputs/style_experiment/final_model.joblib --test data/test.csv --sample data/sample_submission.csv --out outputs/style_experiment/submission.csv
 ```
 
-Outputs stay local. Use a fresh `--out-dir` if the experiment folder already contains files, and adjust the prediction paths to match. The grouped folds approximate topics, not true source domains.
+This selects the feature combination using three grouped folds within the 8,000 training rows, evaluates on the fixed 2,000-row validation set, and refits the selected model on all 10,000 labeled rows for submission.
 
-## Next steps
+Other report experiments:
 
-Zalan: pull the branch and run the style experiment above to recreate the outputs. Update Q4 using `outputs/style_experiment/word_and_style_validation.csv` and the train/validation scores in `summary.json`. The prediction columns are `id`, `label`, and `probability_ai`; join text by ID. Use the original probabilities, not `flat_probability_ai`, for the main analysis. Do not evaluate the full-data `final_model.joblib` on validation rows, since it trained on them.
+```sh
+python experiments.py --train data/train.csv
+python improvement.py --train data/train.csv
+python improvement.py --train data/train.csv --tune
+python unlabeled.py --train data/train.csv --unlabeled data/unlabeled.csv --model word_and_style --out-dir outputs/q3_style
+python errors.py --train data/train.csv --model word_and_style --out-dir outputs/q4_style
+```
 
-Q3 can remain the earlier character-model experiment, clearly labeled. I will update Q5 and the final method/reproduction details; Bowei should check that Q1's selection wording reflects the new final model. Keep report answers outside Git.
+Use empty output directories for fresh runs. For repeat runs, supply a new `--out-dir` and adjust subsequent model and prediction paths accordingly.
 
-## AI assistance
+## Generate submission.csv
 
-AI assists me with implementation. I review and check all AI-generated output before submitting.
+```sh
+python predict.py \
+  --model outputs/style_experiment/final_model.joblib \
+  --test data/test.csv \
+  --sample data/sample_submission.csv \
+  --out outputs/style_experiment/submission.csv
+```
+
+Output: `outputs/style_experiment/submission.csv`, containing AI probabilities in sample-submission order.
+
+## Seeds and configuration
+
+Random seed: **42**. Fixed stratified validation IDs are stored in `validation_ids.json`.
+The final model combines word 1–2 gram TF-IDF (`min_df=2`, `max_features=100000`, `sublinear_tf=True`) with 20 standardized writing-style measurements and logistic regression (`C=10`, `solver=liblinear`, `max_iter=2000`). Vocabulary, IDF and scaling are fitted only on training rows during evaluation. Grouped cross-validation uses 12 text clusters and three folds; the clusters approximate topics, not known source domains.
+
+## AI-tool disclosure
+
+We used AI tools, including ChatGPT/Codex, to assist us with code development, debugging and graph creation. They also suggested different features and model settings to test. AI assisted us as the human implementers. We reviewed the code and outputs, checked the reported scores against our results, and decided which changes to keep.
